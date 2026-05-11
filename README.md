@@ -6,9 +6,9 @@ Aplicación web desarrollada para evaluar la eficiencia de algoritmos de Búsque
 
 * **Motor de Inteligencia Artificial:** Implementación pura en TypeScript de algoritmos de búsqueda informada para resolver el Problema del Viajante (TSP).
 * **Comparativa de Rendimiento:** Evaluación en tiempo real entre la heurística miope (Greedy), la búsqueda óptima (A*) y el estándar comercial (Google API).
-* **Métricas de IA:** Análisis cuantitativo de Nodos Expandidos, complejidad temporal, costo real $g(n)$ y función de evaluación $f(n) = g(n) + h(n).
-* [cite_start]**Análisis de Grafos:** Generación automática de la Matriz de Costos Reales utilizando la *Distance Matrix API* considerando el tráfico actual de Lima.
-* [cite_start]**Heurística Admisible:** Cálculo de la distancia Haversine como estimación optimista $h(n)$ para garantizar la optimalidad de A*.
+* **Métricas de IA:** Análisis cuantitativo de Nodos Expandidos, complejidad temporal, costo real $g(n)$ y función de evaluación $f(n) = g(n) + h(n)$.
+* **Análisis de Grafos:** Generación automática de la Matriz de Costos Reales utilizando la *Distance Matrix API* considerando el tráfico actual de Lima.
+* **Heurística Admisible:** Cálculo de la distancia Haversine como estimación optimista $h(n)$ para garantizar la optimalidad de A*.
 * **Visualización Interactiva:** Interfaz moderna con React y TailwindCSS que grafica las decisiones del algoritmo sobre el mapa vial.
 
 ## Instalación
