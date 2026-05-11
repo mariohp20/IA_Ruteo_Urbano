@@ -1,4 +1,4 @@
-import { DistanceMatrix, DistanceMatrixElement, Location } from '../types/route';
+import { DistanceMatrix, DistanceMatrixElement, type Location } from '../types/route';
 
 // 🔑 INSTRUCCIONES PARA CONFIGURAR TU API KEY DE GOOGLE MAPS:
 // 1. Ve a https://console.cloud.google.com/
@@ -433,6 +433,67 @@ export class GoogleMapsService {
       });
     } catch (error) {
       return { isValid: false, error: 'Error de conexión con Google Maps' };
+    }
+  }
+
+  static async getNativeGoogleRoute(locations: Location[]): Promise<{
+    order: string[];
+    totalDistance: number;
+    totalTime: number;
+  } | null> {
+    if (locations.length < 2 || !this.isApiKeyConfigured()) return null;
+
+    try {
+      await this.initializeServices();
+      const originLoc = locations.find(l => l.isBase);
+      const deliveryLocs = locations.filter(l => !l.isBase);
+      if (!originLoc) return null;
+
+      const origin = originLoc.address + ', Lima, Perú';
+      const waypoints = deliveryLocs.map(loc => ({
+        location: loc.address + ', Lima, Perú',
+        stopover: true
+      }));
+
+      return new Promise((resolve) => {
+        this.directionsService!.route({
+          origin: origin,
+          destination: origin, // Retorna a la base
+          waypoints: waypoints,
+          optimizeWaypoints: true, // LA CAJA NEGRA DE GOOGLE
+          travelMode: google.maps.TravelMode.DRIVING,
+        }, (result, status) => {
+          if (status === 'OK' && result) {
+            const route = result.routes[0];
+            let totalDist = 0;
+            let totalTime = 0;
+            
+            route.legs.forEach(leg => {
+              totalDist += leg.distance?.value || 0;
+              totalTime += leg.duration?.value || 0;
+            });
+
+            // Extraer el orden que Google decidió
+            const waypointOrder = route.waypoint_order || [];
+            const optimizedIds = [
+              originLoc.id,
+              ...waypointOrder.map(index => deliveryLocs[index].id),
+              originLoc.id
+            ];
+
+            resolve({
+              order: optimizedIds,
+              totalDistance: totalDist / 1000,
+              totalTime: totalTime / 60
+            });
+          } else {
+            resolve(null);
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Error en Caja Negra de Google:', error);
+      return null;
     }
   }
 }

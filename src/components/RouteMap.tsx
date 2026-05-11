@@ -7,7 +7,7 @@ import { Location, OptimizedRoute } from '../types/route';
 interface RouteMapProps {
   locations: Location[];
   activeRoute?: OptimizedRoute | null;
-  viewMode?: 'greedy' | 'astar';
+  viewMode?: 'greedy' | 'astar' | 'google'; 
 }
 
 const VITE_GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -25,8 +25,8 @@ export const RouteMap: React.FC<RouteMapProps> = ({ locations, activeRoute, view
   const isApiKeyConfigured = VITE_GOOGLE_MAPS_API_KEY && VITE_GOOGLE_MAPS_API_KEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE';
 
   // Colores dinámicos según el algoritmo
-  const routeColor = viewMode === 'greedy' ? '#DC2626' : '#2563EB'; // Rojo para Greedy, Azul para A*
-  const routeName = viewMode === 'greedy' ? 'Voraz (Greedy)' : 'A* (A-Estrella)';
+  const routeColor = viewMode === 'google' ? '#059669' : (viewMode === 'greedy' ? '#DC2626' : '#2563EB'); 
+  const routeName = viewMode === 'google' ? 'Caja Negra (Google)' : (viewMode === 'greedy' ? 'Voraz (Greedy)' : 'A* (A-Estrella)');
 
   useEffect(() => {
     if (!isApiKeyConfigured) {
@@ -417,7 +417,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({ locations, activeRoute, view
                   return loc && !loc.isBase;
                 }).length + 1;
                 stepNumber = deliveryNumber.toString();
-                stepColor = viewMode === 'greedy' ? 'bg-red-600 text-white' : 'bg-blue-600 text-white';
+                stepColor = viewMode === 'google' ? 'bg-emerald-600 text-white' : (viewMode === 'greedy' ? 'bg-red-600 text-white' : 'bg-blue-600 text-white');
               }
 
               return (

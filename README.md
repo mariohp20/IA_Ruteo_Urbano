@@ -1,21 +1,22 @@
-# OptimizaRutas Lima
+# IA Logística Lima: Búsqueda Informada (Greedy vs A*)
 
-Aplicación web para optimizar rutas de reparto en Lima Metropolitana usando Google Maps Directions API y el modelo del Agente Viajero (TSP).
+Aplicación web desarrollada para evaluar la eficiencia de algoritmos de Búsqueda Informada aplicados al ruteo logístico en Lima Metropolitana. Este proyecto compara implementaciones propias de los algoritmos Greedy (Voraz) y A-Estrella (A*) frente a la optimización nativa (Caja Negra) de Google Maps Directions API.
 
 ## Características
 
-- Optimización automática de rutas de entrega con Google Maps.
-- Visualización de rutas y paradas en un mapa interactivo.
-- Matriz de distancias y tiempos entre ubicaciones.
-- Resultados detallados de eficiencia y recomendaciones.
-- Interfaz moderna con React y TailwindCSS.
+* **Motor de Inteligencia Artificial:** Implementación pura en TypeScript de algoritmos de búsqueda informada para resolver el Problema del Viajante (TSP).
+* **Comparativa de Rendimiento:** Evaluación en tiempo real entre la heurística miope (Greedy), la búsqueda óptima (A*) y el estándar comercial (Google API).
+* **Métricas de IA:** Análisis cuantitativo de Nodos Expandidos, complejidad temporal, costo real $g(n)$ y función de evaluación $f(n) = g(n) + h(n).
+* [cite_start]**Análisis de Grafos:** Generación automática de la Matriz de Costos Reales utilizando la *Distance Matrix API* considerando el tráfico actual de Lima.
+* [cite_start]**Heurística Admisible:** Cálculo de la distancia Haversine como estimación optimista $h(n)$ para garantizar la optimalidad de A*.
+* **Visualización Interactiva:** Interfaz moderna con React y TailwindCSS que grafica las decisiones del algoritmo sobre el mapa vial.
 
 ## Instalación
 
 1. **Clona el repositorio:**
    ```sh
-   git clone https://github.com/tu-usuario/route-optimizer.git
-   cd route-optimizer
+   git clone https://github.com/alEx777170/miniproyecto_IA_01.git
+   cd miniproyecto_IA_01
    ```
 
 2. **Instala las dependencias:**
@@ -54,20 +55,22 @@ Aplicación web para optimizar rutas de reparto en Lima Metropolitana usando Goo
 
 ```
 src/
-  App.tsx
-  main.tsx
-  index.css
+  ai/
+    heuristics.ts       # Funciones h(n) (Haversine/Línea recta)
+    matrixAdapter.ts    # Transformación de datos a matrices g(n)
+    tspAlgorithms.ts    # Motor de IA: Clases de búsqueda Greedy y A*
   components/
-    LocationForm.tsx
-    DistanceMatrix.tsx
-    OptimizationResults.tsx
-    RouteMap.tsx
+    DistanceMatrix.tsx  # Visualización de la matriz de costos reales
+    LocationForm.tsx    # Gestión de nodos del grafo (Base y Entregas)
+    OptimizationResults.tsx # Dashboard métrico y comparativo
+    RouteMap.tsx        # Renderizado geográfico con Google Maps
   services/
-    googleMapsService.ts
+    googleMapsService.ts # Consumo de APIs (Directions / Distance Matrix)
   types/
-    route.ts
-  utils/
-    tspSolver.ts
+    route.ts            # Interfaces y tipos de datos de la aplicación
+  App.tsx               # Orquestador principal de estados y lógica
+  main.tsx              # Punto de entrada de React
+  vite-env.d.ts         # Definiciones de entorno para Vite
 ```
 
 ## Tecnologías
@@ -80,9 +83,9 @@ src/
 
 ## Notas
 
-- La app está optimizada para rutas en Lima, Perú.
-- Para producción, restringe tu API Key solo a los dominios necesarios.
-- Si no configuras la API Key, la app usará simulaciones de distancias y tiempos.
+- El sistema modela Lima Metropolitana como un Grafo Completo.
+- La matriz de pesos es dinámica y asimétrica según el tráfico en tiempo real.
+- El proyecto valida la admisibilidad de la heurística para garantizar resultados óptimos en A*.
 
 ## Licencia
 
@@ -90,4 +93,4 @@ MIT
 
 ---
 
-Desarrollado por Pieers
+Desarrollado por Alex
