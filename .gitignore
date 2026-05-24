@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 .env
+miniproyecto_IA_01/
 
 # Editor directories and files
 .vscode/*

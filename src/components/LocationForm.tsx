@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { MapPin, Plus, Trash2, Navigation, BrainCircuit } from 'lucide-react';
+import { importMapsLibrary, mapsReady } from '../services/mapsLoader';
+import { AlertCircle, MapPin, Plus, Trash2 } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Location } from '../types/route';
 
 interface LocationFormProps {
@@ -15,55 +16,149 @@ export const LocationForm: React.FC<LocationFormProps> = ({
   onAddLocation,
   onRemoveLocation,
   onOptimizeRoute,
-  isOptimizing
+  isOptimizing,
 }) => {
-  const [newAddress, setNewAddress] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const acElementRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
+
+  // ESTADOS
+  const [inputText, setInputText] = useState('');
   const [isBase, setIsBase] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [acKey, setAcKey] = useState(0);
 
-  const handleAddLocation = () => {
-    if (!newAddress.trim()) return;
+  // Inicialización Visual del Buscador
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let mounted = true;
 
-    const location: Location = {
-      id: Date.now().toString(),
-      address: newAddress.trim(),
-      isBase
+    const init = async () => {
+      await mapsReady;
+      if (!mounted || !container) return;
+
+      const { PlaceAutocompleteElement } = await importMapsLibrary('places');
+
+      const element = new PlaceAutocompleteElement({
+        componentRestrictions: { country: 'pe' },
+        requestedLanguage: 'es',
+        locationBias: new google.maps.LatLngBounds(
+          { lat: -12.4, lng: -77.2 },
+          { lat: -11.7, lng: -76.7 },
+        ),
+      });
+
+      element.setAttribute('autocomplete', 'new-password');
+
+      acElementRef.current = element;
+
+      element.addEventListener('input', (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        if (target) setInputText(target.value);
+      });
+
+      element.addEventListener('gmp-placeselect', () => {
+        setTimeout(() => {
+          if (acElementRef.current) {
+            setInputText(acElementRef.current.value || '');
+          }
+        }, 50);
+      });
+
+      container.appendChild(element);
     };
 
-    onAddLocation(location);
-    setNewAddress('');
-    setIsBase(false);
-  };
+    init();
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleAddLocation();
+    return () => {
+      mounted = false;
+      if (container) container.innerHTML = '';
+    };
+  }, [acKey]);
+
+  /**
+   * Confirma la ubicación seleccionada en el estado global.
+   * Si no se selecciona explícitamente del desplegable, recurre a la API de Geocodificación.
+   */
+  const handleAddLocation = useCallback(async () => {
+    const textToSearch = (acElementRef.current?.value || inputText).trim();
+
+    if (!textToSearch) {
+      setErrorMsg('Escribe una dirección válida.');
+      return;
     }
-  };
+
+    setIsProcessing(true);
+    setErrorMsg('');
+
+    try {
+      await mapsReady;
+      const geocoder = new google.maps.Geocoder();
+
+      const response = await geocoder.geocode({
+        address: `${textToSearch}, Lima, Perú`,
+        bounds: new google.maps.LatLngBounds(
+          { lat: -12.4, lng: -77.2 },
+          { lat: -11.7, lng: -76.7 }
+        )
+      });
+
+      if (response.results && response.results.length > 0) {
+        const result = response.results[0];
+
+        onAddLocation({
+          id: Date.now().toString(),
+          address: result.formatted_address,
+          lat: result.geometry.location.lat(),
+          lng: result.geometry.location.lng(),
+          isBase
+        });
+
+        setIsBase(false);
+        setInputText('');
+        setAcKey(k => k + 1);
+      } else {
+        setErrorMsg('No se encontró la ubicación exacta en Lima.');
+      }
+    } catch (error) {
+      console.error('[Geocoding Error]', error);
+      setErrorMsg('No se pudo verificar la dirección en el mapa.');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [inputText, isBase, onAddLocation]);
 
   const baseLocation = locations.find(l => l.isBase);
   const deliveryLocations = locations.filter(l => !l.isBase);
+
+  const canAdd = inputText.trim().length > 3 && !isProcessing;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
       <div className="flex items-center gap-3 mb-6">
         <MapPin className="w-6 h-6 text-indigo-600" />
-        <h2 className="text-xl font-semibold text-gray-800">Gestión de Nodos (Grafo)</h2>
+        <h2 className="text-xl font-semibold text-gray-800">Gestión de Nodos</h2>
       </div>
 
-      {/* Add Location Form */}
       <div className="space-y-4 mb-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Nueva Dirección o Coordenada
+            Buscar Dirección en Lima
           </label>
-          <input
-            type="text"
-            value={newAddress}
-            onChange={(e) => setNewAddress(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Ej. Av. Universitaria 1800, Lima"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+          <div
+            key={acKey}
+            ref={containerRef}
+            className={`w-full rounded-lg border transition-all ${errorMsg ? 'border-red-400 ring-2 ring-red-100' : 'border-gray-200'}`}
+            style={{ position: 'relative', zIndex: 50, minHeight: '40px' }}
           />
+
+          {errorMsg && (
+            <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" />
+              {errorMsg}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -71,111 +166,52 @@ export const LocationForm: React.FC<LocationFormProps> = ({
             type="checkbox"
             id="isBase"
             checked={isBase}
-            onChange={(e) => setIsBase(e.target.checked)}
-            className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+            onChange={e => setIsBase(e.target.checked)}
+            className="w-4 h-4 text-indigo-600 border-gray-300 rounded"
           />
-          <label htmlFor="isBase" className="text-sm text-gray-700">
-            Definir como Base de Operaciones (Nodo Inicial)
+          <label htmlFor="isBase" className="text-sm text-gray-700 cursor-pointer">
+            Definir como <span className="font-semibold text-green-700">Base de Operaciones</span>
           </label>
         </div>
 
         <button
           onClick={handleAddLocation}
-          disabled={!newAddress.trim()}
-          className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+          disabled={!canAdd}
+          className="w-full bg-indigo-600 text-white py-2.5 px-4 rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 font-medium text-sm"
         >
-          <Plus className="w-4 h-4" />
-          Agregar Nodo
+          {isProcessing ? 'Verificando...' : <><Plus className="w-4 h-4" />Agregar Nodo</>}
         </button>
       </div>
 
-      {/* Locations List */}
       <div className="space-y-3">
-        <h3 className="font-medium text-gray-800 flex justify-between items-center">
-          <span>Ubicaciones Actuales</span>
-          <span className="bg-gray-100 text-gray-600 py-1 px-2 rounded-full text-xs">
-            Total: {locations.length}
-          </span>
-        </h3>
-        
         {baseLocation && (
-          <div className="p-3 bg-green-50 border border-green-200 rounded-lg shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Navigation className="w-4 h-4 text-green-600" />
-                <span className="text-sm font-bold text-green-800">BASE:</span>
-                <span className="text-sm text-gray-700">{baseLocation.address}</span>
-              </div>
-              <button
-                onClick={() => onRemoveLocation(baseLocation.id)}
-                className="text-red-500 hover:text-red-700 transition-colors p-1"
-                title="Eliminar base"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
+          <div className="p-3 bg-green-50 border border-green-200 rounded-lg shadow-sm flex items-center justify-between">
+            <span className="text-sm text-gray-700 truncate font-bold text-green-800">📍 BASE: {baseLocation.address}</span>
+            <button onClick={() => onRemoveLocation(baseLocation.id)} className="text-red-400 hover:text-red-600 p-1">
+              <Trash2 className="w-4 h-4" />
+            </button>
           </div>
         )}
 
         {deliveryLocations.map((location, index) => (
-          <div key={location.id} className="p-3 bg-gray-50 border border-gray-200 rounded-lg hover:border-indigo-300 transition-colors">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="w-6 h-6 bg-indigo-100 text-indigo-700 text-xs rounded-full flex items-center justify-center font-bold">
-                  {index + 1}
-                </span>
-                <span className="text-sm text-gray-700">{location.address}</span>
-              </div>
-              <button
-                onClick={() => onRemoveLocation(location.id)}
-                className="text-red-500 hover:text-red-700 transition-colors p-1"
-                title="Eliminar nodo"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
+          <div key={location.id} className="p-3 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-between">
+            <span className="text-sm text-gray-700 truncate">📍 {index + 1}. {location.address}</span>
+            <button onClick={() => onRemoveLocation(location.id)} className="text-red-400 hover:text-red-600 p-1">
+              <Trash2 className="w-4 h-4" />
+            </button>
           </div>
         ))}
       </div>
 
-      {/* Optimize Button */}
       {locations.length >= 2 && baseLocation && (
         <div className="mt-6 pt-6 border-t border-gray-200">
           <button
             onClick={onOptimizeRoute}
             disabled={isOptimizing}
-            className="w-full bg-slate-800 text-white py-3 px-4 rounded-lg hover:bg-slate-900 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 font-medium shadow-md"
+            className="w-full bg-slate-800 text-white py-3 px-4 rounded-lg hover:bg-slate-900 disabled:bg-gray-400 transition-colors flex items-center justify-center gap-2 font-medium"
           >
-            {isOptimizing ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Procesando Algoritmos...
-              </>
-            ) : (
-              <>
-                <BrainCircuit className="w-5 h-5 text-indigo-400" />
-                Ejecutar Motor de IA
-              </>
-            )}
+            {isOptimizing ? 'Procesando...' : 'Buscar Mejor Ruta'}
           </button>
-        </div>
-      )}
-
-      {/* Warnings */}
-      {locations.length < 2 && (
-        <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-          <p className="text-sm text-amber-800 flex items-center gap-2">
-            <span className="block w-2 h-2 bg-amber-500 rounded-full"></span>
-            Agrega al menos 2 nodos (1 base + 1 destino) para ejecutar los algoritmos.
-          </p>
-        </div>
-      )}
-      {locations.length >= 2 && !baseLocation && (
-        <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-sm text-red-800 flex items-center gap-2">
-            <span className="block w-2 h-2 bg-red-500 rounded-full"></span>
-            Falta definir un nodo como Base de Operaciones.
-          </p>
         </div>
       )}
     </div>

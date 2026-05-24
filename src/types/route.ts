@@ -1,3 +1,4 @@
+// Tipado de tus Nodos Internos (Frontend)
 export interface Location {
   id: string;
   address: string;
@@ -6,27 +7,41 @@ export interface Location {
   isBase?: boolean;
 }
 
-export interface DistanceMatrixElement {
-  distance: {
-    text: string;
-    value: number; // in meters
-  };
-  duration: {
-    text: string;
-    value: number; // in seconds
-  };
-  status: string;
-}
-
-export interface DistanceMatrix {
-  [fromId: string]: {
-    [toId: string]: DistanceMatrixElement;
-  };
-}
-
 export interface OptimizedRoute {
   order: string[];
   totalDistance: number;
   totalTime: number;
   totalCost: number;
+}
+
+// Tipado de la Respuesta de Google Routes API (Backend REST)
+export interface LatLng {
+  latitude: number;
+  longitude: number;
+}
+
+export interface RouteLeg {
+  distanceMeters: number;
+  duration: {
+    seconds: number;
+  };
+}
+
+export interface Route {
+  legs: RouteLeg[];
+  distanceMeters: number;
+  duration: {
+    seconds: number;
+  };
+  polyline: {
+    encodedPolyline: string;
+  };
+}
+
+export interface RouteMatrixElement {
+  originIndex: number;
+  destinationIndex: number;
+  duration: string;
+  distanceMeters: number;
+  status?: string;
 }

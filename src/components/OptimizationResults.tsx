@@ -1,4 +1,4 @@
-import { Award, BarChart3, BrainCircuit, Clock, GitBranch, MapPin, Box } from 'lucide-react';
+import { Award, BarChart3, BrainCircuit, GitBranch, MapPin, Box } from 'lucide-react';
 import React from 'react';
 import { Location, OptimizedRoute } from '../types/route';
 import { SearchResult } from '../ai/tspAlgorithms';
@@ -59,22 +59,22 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({ active
       </div>
 
       <div className="space-y-4">
-        {/* EXPLICACIÓN DEL ALGORITMO */}
+        {/* Algorithm Behavior Explanation */}
         <div className={`p-4 rounded-lg border ${colorBg}`}>
           <div className="flex items-center gap-2 mb-2">
             <GitBranch className={`w-5 h-5 ${colorText}`} />
             <span className={`font-bold ${colorText}`}>Comportamiento</span>
           </div>
           <p className={`text-sm ${colorText} opacity-90`}>
-            {isGoogle 
+            {isGoogle
               ? "Representa la solución comercial. Google utiliza heurísticas propietarias no reveladas (caja negra) alimentadas por grafos masivos de tráfico. No sabemos cuántos nodos expande, pero sirve como 'Ground Truth' para medir nuestros algoritmos."
-              : (viewMode === 'greedy' 
+              : (viewMode === 'greedy'
                 ? "Greedy evaluó únicamente el costo inmediato g(n). Eligió el destino con menos tráfico actual sin prever el futuro, ahorrando memoria computacional pero arriesgando el tiempo final."
                 : "A* utilizó f(n) = g(n) + h(n), combinando el tráfico real acumulado con la distancia Haversine. Explora más nodos, pero garantiza matemáticamente la ruta óptima dentro del grafo.")}
           </p>
         </div>
 
-        {/* COMPARATIVA CONTRA A* */}
+        {/* Baseline Comparison against Optimal A* */}
         {astarM && googleRoute && viewMode !== 'astar' && (
           <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
             <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
@@ -83,9 +83,9 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({ active
             </h4>
             <div className="text-sm text-slate-700 space-y-2">
               {isGoogle ? (
-                <p>La API de Google obtuvo una ruta de <strong>{Math.round(googleRoute.totalTime)} min</strong>. Nuestro algoritmo A* encontró una de <strong>{Math.round(astarM.totalCost)} min</strong>. Si los tiempos son muy cercanos, demuestra la eficiencia de nuestra heurística académica.</p>
+                <p>La API de Google obtuvo una ruta de <strong>{Math.round(googleRoute.totalTime)} min</strong>. Nuestro algoritmo A* encontró una de <strong>{Math.round(astarM.totalCost / 60)} min</strong>. {Math.round(astarM.totalCost / 60) <= Math.round(googleRoute.totalTime) ? 'Nuestra heurística académica superó a la caja negra de Google en base a la matriz estática.' : 'Google considera tráfico en tiempo real, por eso puede diferir del óptimo teórico calculado con la matriz.'}</p>
               ) : (
-                <p>Greedy resultó <strong>{Math.round(activeRoute.totalTime - astarM.totalCost)} minutos más lento</strong> que A*, demostrando la desventaja de la miopía de búsqueda, aunque requirió menos carga en memoria.</p>
+                <p>Greedy resultó <strong>{Math.round(activeRoute.totalTime - (astarM.totalCost / 60))} minutos más lento</strong> que A*, demostrando la desventaja de la miopía de búsqueda, aunque requirió menos carga en memoria.</p>
               )}
             </div>
           </div>

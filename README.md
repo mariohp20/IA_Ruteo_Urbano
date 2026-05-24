@@ -1,91 +1,97 @@
-# IA Logística Lima: Búsqueda Informada (Greedy vs A*)
+# TSP Moto Lima — Greedy vs A* vs Google Routes API
 
-Aplicación web desarrollada para evaluar la eficiencia de algoritmos de Búsqueda Informada aplicados al ruteo logístico en Lima Metropolitana. Este proyecto compara implementaciones propias de los algoritmos Greedy (Voraz) y A-Estrella (A*) frente a la optimización nativa (Caja Negra) de Google Maps Directions API.
+Aplicación web de comparativa académica de algoritmos de Búsqueda Informada aplicados al Problema del Viajante (TSP) en Lima Metropolitana, con perfil de motocicleta y tráfico en tiempo real.
+
+> **Versión 2.0.0** — Refactorización a estándares modernos.
 
 ## Características
 
-* **Motor de Inteligencia Artificial:** Implementación pura en TypeScript de algoritmos de búsqueda informada para resolver el Problema del Viajante (TSP).
-* **Comparativa de Rendimiento:** Evaluación en tiempo real entre la heurística miope (Greedy), la búsqueda óptima (A*) y el estándar comercial (Google API).
-* **Métricas de IA:** Análisis cuantitativo de Nodos Expandidos, complejidad temporal, costo real $g(n)$ y función de evaluación $f(n) = g(n) + h(n)$.
-* **Análisis de Grafos:** Generación automática de la Matriz de Costos Reales utilizando la *Distance Matrix API* considerando el tráfico actual de Lima.
-* **Heurística Admisible:** Cálculo de la distancia Haversine como estimación optimista $h(n)$ para garantizar la optimalidad de A*.
-* **Visualización Interactiva:** Interfaz moderna con React y TailwindCSS que grafica las decisiones del algoritmo sobre el mapa vial.
+- **Motor de IA propio:** Implementación pura en TypeScript de Greedy (Voraz) y A* Óptimo.
+- **Routes API v2 (REST):** Petición `fetch` directa a `routes.googleapis.com` con `travelMode: TWO_WHEELER` y `TRAFFIC_AWARE` — sin SDK antiguo de DistanceMatrix.
+- **Benchmark comercial:** Comparativa contra la "Caja Negra" de Google (`optimizeWaypoints: true`).
+- **Heurística admisible:** Haversine a 50 km/h máx. garantiza optimalidad matemática de A*.
+- **TypeScript estricto:** Tipos definidos para la respuesta de la Routes API, sin `any` implícitos.
 
 ## Instalación
 
-1. **Clona el repositorio:**
-   ```sh
-   git clone https://github.com/alEx777170/miniproyecto_IA_01.git
-   cd miniproyecto_IA_01
-   ```
+```sh
+git clone https://github.com/mariohp20/IA_Ruteo_Urbano.git
+cd IA_Ruteo_Urbano
+npm install
+```
 
-2. **Instala las dependencias:**
-   ```sh
-   npm install
-   ```
+### Configurar API Key
 
-3. **Configura tu API Key de Google Maps:**
-   - Ve a [Google Cloud Console](https://console.cloud.google.com/).
-   - Habilita las APIs: Maps JavaScript API, Directions API, Distance Matrix API, Geocoding API.
-   - Crea una API Key.
-   - Crea un archivo `.env` en la raíz del proyecto y agrega:
-     ```
-     VITE_GOOGLE_MAPS_API_KEY=tu_clave_api_aqui
-     ```
-   - La app tomará automáticamente la clave desde el archivo `.env`.
+Copia el archivo de ejemplo y añade tu clave:
 
-4. **Inicia la app en modo desarrollo:**
-   ```sh
-   npm run dev
-   ```
+```sh
+cp .env.example .env
+```
 
-5. **Abre en tu navegador:**
-   ```
-   http://localhost:5173
-   ```
+Edita `.env`:
 
-## Scripts disponibles
+```
+VITE_GOOGLE_MAPS_API_KEY=tu_clave_api
+```
 
-- `npm run dev` — Inicia el servidor de desarrollo.
-- `npm run build` — Compila la app para producción.
-- `npm run preview` — Previsualiza la app de producción.
-- `npm run lint` — Ejecuta el linter.
+**APIs que deben estar habilitadas en Google Cloud Console:**
+- Maps JavaScript API (Para el mapa base)
+- Places API (New) (Para el autocompletado de direcciones)
+- Geocoding API (Para la validación estricta de Lima)
+- Routes API (Para la matriz de tiempos de motos)
+- Directions API (Para el trazado visual de la ruta final)
+
+```sh
+npm run dev
+# Abre http://localhost:5173
+```
 
 ## Estructura del proyecto
 
 ```
 src/
   ai/
-    heuristics.ts       # Funciones h(n) (Haversine/Línea recta)
-    matrixAdapter.ts    # Transformación de datos a matrices g(n)
-    tspAlgorithms.ts    # Motor de IA: Clases de búsqueda Greedy y A*
+    heuristics.ts         # h(n): Haversine → tiempo optimista(admisible)
+    matrixAdapter.ts      # extractCoordinates(), secondsToMinutesMatrix()
+    tspAlgorithms.ts      # PathfindingEngine: runGreedy(), runAStar()
   components/
-    DistanceMatrix.tsx  # Visualización de la matriz de costos reales
-    LocationForm.tsx    # Gestión de nodos del grafo (Base y Entregas)
-    OptimizationResults.tsx # Dashboard métrico y comparativo
-    RouteMap.tsx        # Renderizado geográfico con Google Maps
+    DistanceMatrix.tsx    # Tabla NxN a partir de number[][] (segundos)
+    LocationForm.tsx      # Gestión de nodos del grafo
+    OptimizationResults.tsx  # Dashboard métrico comparativo
+    RouteMap.tsx          # Mapa interactivo con @googlemaps/js-api-loader
   services/
-    googleMapsService.ts # Consumo de APIs (Directions / Distance Matrix)
+    googleMapsService.ts  # SDK visual: trazado de rutas y Caja Negra
+    routesApiService.ts   # Routes API REST: fetchMotorcycleMatrix()
   types/
-    route.ts            # Interfaces y tipos de datos de la aplicación
-  App.tsx               # Orquestador principal de estados y lógica
-  main.tsx              # Punto de entrada de React
-  vite-env.d.ts         # Definiciones de entorno para Vite
+    route.ts              # Interfaces core: Location, OptimizedRoute
+  App.tsx                 # Orquestador: estado + flujo de optimización
+  main.tsx                # Punto de entrada React
+  vite-env.d.ts           # Tipado de import.meta.env
+```
+
+## Flujo de Datos
+
+```
+Click "Ejecutar Motor de IA"
+  → fetchMotorcycleMatrix()      [Routes API REST, TWO_WHEELER, TRAFFIC_AWARE]
+  → PathfindingEngine.runGreedy()
+  → PathfindingEngine.runAStar()
+  → Promise.all([
+      getRouteFromOrderedLocations(greedyOrder),  [DirectionsService, draw]
+      getRouteFromOrderedLocations(astarOrder),   [DirectionsService, draw]
+      getNativeGoogleRoute()                       [Caja Negra, benchmark]
+    ])
+  → setState → React re-render
 ```
 
 ## Tecnologías
 
-- [React](https://react.dev/)
-- [Vite](https://vitejs.dev/)
-- [TailwindCSS](https://tailwindcss.com/)
-- [Google Maps APIs](https://developers.google.com/maps/documentation)
-- [Lucide React Icons](https://lucide.dev/)
-
-## Notas
-
-- El sistema modela Lima Metropolitana como un Grafo Completo.
-- La matriz de pesos es dinámica y asimétrica según el tráfico en tiempo real.
-- El proyecto valida la admisibilidad de la heurística para garantizar resultados óptimos en A*.
+- [React 18](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
+- [Vite 5](https://vitejs.dev/)
+- [Tailwind CSS 3](https://tailwindcss.com/)
+- [Google Maps JavaScript API](https://developers.google.com/maps/documentation/javascript)
+- [Google Routes API v2](https://developers.google.com/maps/documentation/routes)
+- [Lucide React](https://lucide.dev/)
 
 ## Licencia
 
@@ -93,4 +99,10 @@ MIT
 
 ---
 
-Desarrollado por Alex
+### Autoría
+
+**Refactorización v2.0.0:** Mario
+
+**Créditos — Proyecto Original:**
+- Pieers
+- Alex

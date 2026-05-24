@@ -1,10 +1,14 @@
 {
-  "name": "route-optimization-lima",
+  "name": "tsp-moto-lima",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.0.0",
   "type": "module",
-  "description": "Route optimization application for Lima, Peru using Google Maps API",
-  "author": "pieersx",
+  "description": "TSP Route Optimizer for Lima — Greedy vs A* vs Google Routes API (TWO_WHEELER). Refactored to production-grade standards.",
+  "author": "ander <refactored-version>",
+  "contributors": [
+    "Pieers (original implementation)",
+    "Alex (original implementation)"
+  ],
   "license": "MIT",
   "scripts": {
     "dev": "vite",
