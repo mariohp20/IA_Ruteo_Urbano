@@ -1,5 +1,5 @@
 {
-  "name": "tsp-moto-lima",
+  "name": "Análisis Experimental",
   "private": true,
   "version": "2.0.0",
   "type": "module",
@@ -7,7 +7,7 @@
   "author": "ander <refactored-version>",
   "contributors": [
     "Pieers (original implementation)",
-    "Alex (original implementation)"
+    "Alex (implementation)"
   ],
   "license": "MIT",
   "scripts": {
