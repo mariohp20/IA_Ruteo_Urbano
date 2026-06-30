@@ -1,4 +1,3 @@
-// Tipado de tus Nodos Internos (Frontend)
 export interface Location {
   id: string;
   address: string;
@@ -14,7 +13,7 @@ export interface OptimizedRoute {
   totalCost: number;
 }
 
-// Tipado de la Respuesta de Google Routes API (Backend REST)
+// Tipos de respuesta de Google Routes API
 export interface LatLng {
   latitude: number;
   longitude: number;
@@ -22,17 +21,13 @@ export interface LatLng {
 
 export interface RouteLeg {
   distanceMeters: number;
-  duration: {
-    seconds: number;
-  };
+  duration: string;
 }
 
 export interface Route {
   legs: RouteLeg[];
   distanceMeters: number;
-  duration: {
-    seconds: number;
-  };
+  duration: string;
   polyline: {
     encodedPolyline: string;
   };
