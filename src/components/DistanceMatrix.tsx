@@ -7,7 +7,6 @@ interface DistanceMatrixProps {
   rawTimeMatrix: number[][] | null;
 }
 
-// Utilidades de formato visual
 function secsToDisplay(secs: number): string {
   if (secs === Infinity || secs < 0) return '—';
   if (secs === 0) return '0 min';
@@ -21,7 +20,6 @@ function getNodeLabel(location: Location, locations: Location[]): string {
   return `N${idx + 1}`;
 }
 
-// Funciones de análisis estadístico de grafos
 function getAverageMinutes(matrix: number[][]): number {
   const values = matrix.flat().filter(v => v !== 0 && v !== Infinity);
   if (!values.length) return 0;
@@ -64,7 +62,6 @@ function getSlowestEdge(matrix: number[][], locations: Location[]): EdgeInfo | n
   return result;
 }
 
-// Componente para renderizar la matriz de distancias
 export const DistanceMatrix: React.FC<DistanceMatrixProps> = ({
   locations,
   rawTimeMatrix,
@@ -107,7 +104,6 @@ export const DistanceMatrix: React.FC<DistanceMatrixProps> = ({
         </div>
       ) : (
         <>
-          {/* Leyenda de nodos */}
           <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
             <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
               <Network className="w-4 h-4 text-slate-500" />
@@ -140,7 +136,6 @@ export const DistanceMatrix: React.FC<DistanceMatrixProps> = ({
             </div>
           </div>
 
-          {/* Tabla NxN */}
           <div className="overflow-x-auto mb-6 rounded-lg border border-gray-200 shadow-sm">
             <table className="w-full border-collapse bg-white">
               <thead>
@@ -216,7 +211,6 @@ export const DistanceMatrix: React.FC<DistanceMatrixProps> = ({
             </table>
           </div>
 
-          {/* Estadísticas de aristas */}
           <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
             <Activity className="w-4 h-4 text-slate-500" />
             Análisis de Aristas del Grafo

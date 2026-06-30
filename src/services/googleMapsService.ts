@@ -15,7 +15,7 @@ async function getRoutesLib(): Promise<RoutesLibrary> {
   return routesLibPromise;
 }
 
-// Adaptador: Convierte Location al formato nativo del JS SDK
+/** Convierte Location al formato de waypoint del JS SDK de Google Maps. */
 function toWaypoint(loc: Location): object {
   if (loc.lat != null && loc.lng != null) {
     return { location: { lat: loc.lat, lng: loc.lng } };
@@ -30,13 +30,13 @@ export class GoogleMapsService {
   }
 
   /**
-    * Traza la ruta respetando estrictamente el orden calculado por Greedy/A*.
-    * optimizeWaypointOrder se mantiene en false para no alterar el pathfinding.
+   * Traza la ruta en el orden exacto calculado por Greedy/A*.
+   * `optimizeWaypointOrder: false` para no alterar el resultado del motor de IA.
    */
   static async getRouteFromOrderedLocations(orderedLocations: Location[]): Promise<{
     orderedIds: string[];
     totalDistance: number;  // km
-    totalTime: number;  // minutos
+    totalTime: number;      // minutos
     path: google.maps.LatLngAltitude[];
   } | null> {
     if (orderedLocations.length < 2 || !this.isApiKeyConfigured()) return null;
@@ -68,11 +68,14 @@ export class GoogleMapsService {
     }
   }
 
-  // Benchmark Comercial (Caja Negra): Delega la optimización interna a Google (TSP nativo).
+  /**
+   * Benchmark comercial: delega la optimización del tour a Google (caja negra).
+   * Usa `optimizeWaypointOrder: true` para que la API resuelva el TSP internamente.
+   */
   static async getNativeGoogleRoute(locations: Location[]): Promise<{
     order: string[];
     totalDistance: number;  // km
-    totalTime: number;  // minutos
+    totalTime: number;      // minutos
     path: google.maps.LatLngAltitude[];
   } | null> {
     if (locations.length < 2 || !this.isApiKeyConfigured()) return null;
@@ -86,7 +89,7 @@ export class GoogleMapsService {
 
       const { routes } = await Route.computeRoutes({
         origin: toWaypoint(originLoc),
-        destination: toWaypoint(originLoc), // tour cerrado: regresa a la base
+        destination: toWaypoint(originLoc),
         intermediates: deliveryLocs.map(toWaypoint),
         travelMode: 'DRIVING',
         optimizeWaypointOrder: true,

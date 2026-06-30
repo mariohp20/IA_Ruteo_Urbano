@@ -1,44 +1,38 @@
 import { AlertCircle, Clock, Key, Map, Navigation, Route } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { GoogleMapsService } from '../services/googleMapsService';
 import { mapsReady } from '../services/mapsLoader';
 import { Location, OptimizedRoute } from '../types/route';
-
-// Interfaces
 
 interface RouteMapProps {
   locations: Location[];
   activeRoute?: OptimizedRoute | null;
+  /** Path cacheado en App.tsx — no provoca llamadas de red al cambiar de pestaña. */
+  activePath?: google.maps.LatLngAltitude[];
   viewMode?: 'greedy' | 'astar' | 'google';
 }
-
-// RouteMap Component
 
 export const RouteMap: React.FC<RouteMapProps> = ({
   locations,
   activeRoute,
+  activePath = [],
   viewMode = 'astar',
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
+  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
 
   const [isMapReady, setIsMapReady] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isApiKeyConfigured = !!import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-  // Colors and labels per algorithm
   const routeColor = viewMode === 'google' ? '#059669'
     : viewMode === 'greedy' ? '#DC2626'
       : '#2563EB';
   const routeName = viewMode === 'google' ? 'Caja Negra (Google)'
     : viewMode === 'greedy' ? 'Voraz (Greedy)'
       : 'A* (A-Estrella)';
-
-  // Map initialization
 
   useEffect(() => {
     if (!isApiKeyConfigured || !mapRef.current) return;
@@ -47,8 +41,9 @@ export const RouteMap: React.FC<RouteMapProps> = ({
       if (!mapRef.current || mapInstanceRef.current) return;
 
       const mapInstance = new google.maps.Map(mapRef.current, {
-        center: { lat: -12.0464, lng: -77.0428 }, // Lima, Perú
+        center: { lat: -12.0464, lng: -77.0428 },
         zoom: 12,
+        mapId: 'DEMO_MAP_ID', // requerido para AdvancedMarkerElement
         mapTypeControl: true,
         streetViewControl: false,
         fullscreenControl: true,
@@ -69,10 +64,8 @@ export const RouteMap: React.FC<RouteMapProps> = ({
     });
   }, [isApiKeyConfigured]);
 
-  // Marker helpers
-
   const clearMarkers = useCallback(() => {
-    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current.forEach(m => { m.map = null; });
     markersRef.current = [];
   }, []);
 
@@ -81,14 +74,19 @@ export const RouteMap: React.FC<RouteMapProps> = ({
     polylineRef.current = null;
   }, []);
 
-  const createMarkerSVG = (label: string, color: string) => `
-    <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="20" cy="20" r="18" fill="${color}" stroke="white" stroke-width="2"/>
-      <text x="20" y="26" text-anchor="middle" fill="white"
-        font-family="Arial, sans-serif"
-        font-size="${label.length > 2 ? '8' : '12'}"
-        font-weight="bold">${label}</text>
-    </svg>`;
+  const createMarkerElement = (label: string, color: string): HTMLElement => {
+    const div = document.createElement('div');
+    div.style.cssText = 'width:40px;height:40px;cursor:pointer;';
+    div.innerHTML = `
+      <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="20" cy="20" r="18" fill="${color}" stroke="white" stroke-width="2"/>
+        <text x="20" y="26" text-anchor="middle" fill="white"
+          font-family="Arial, sans-serif"
+          font-size="${label.length > 2 ? '8' : '12'}"
+          font-weight="bold">${label}</text>
+      </svg>`;
+    return div;
+  };
 
   const placeMarkers = useCallback((
     orderedLocations: Location[],
@@ -96,7 +94,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
     mapInst: google.maps.Map,
   ) => {
     clearMarkers();
-    const newMarkers: google.maps.Marker[] = [];
+    const newMarkers: google.maps.marker.AdvancedMarkerElement[] = [];
 
     orderedLocations.forEach((loc, index) => {
       if (loc.lat == null || loc.lng == null) return;
@@ -112,16 +110,12 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         label = deliveryIdx.toString();
       }
 
-      const marker = new google.maps.Marker({
+      const marker = new google.maps.marker.AdvancedMarkerElement({
         position: { lat: loc.lat, lng: loc.lng },
         map: mapInst,
         title: loc.address,
         zIndex: 1000,
-        icon: {
-          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(createMarkerSVG(label, markerColor))}`,
-          scaledSize: new google.maps.Size(40, 40),
-          anchor: new google.maps.Point(20, 40),
-        },
+        content: createMarkerElement(label, markerColor),
       });
 
       const infoWindow = new google.maps.InfoWindow({
@@ -139,7 +133,6 @@ export const RouteMap: React.FC<RouteMapProps> = ({
     markersRef.current = newMarkers;
   }, [clearMarkers]);
 
-  // Mostrar solo marcadores
   const showMarkersOnly = useCallback(() => {
     const mapInst = mapInstanceRef.current;
     if (!mapInst) return;
@@ -148,24 +141,20 @@ export const RouteMap: React.FC<RouteMapProps> = ({
 
     if (locations.length === 0) return;
 
-    const newMarkers: google.maps.Marker[] = [];
+    const newMarkers: google.maps.marker.AdvancedMarkerElement[] = [];
     const bounds = new google.maps.LatLngBounds();
 
     locations.forEach((loc, index) => {
       if (loc.lat == null || loc.lng == null) return;
 
-      const marker = new google.maps.Marker({
+      const marker = new google.maps.marker.AdvancedMarkerElement({
         position: { lat: loc.lat, lng: loc.lng },
         map: mapInst,
         title: loc.address,
-        icon: {
-          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(createMarkerSVG(
-            loc.isBase ? 'BASE' : (index + 1).toString(),
-            loc.isBase ? '#059669' : '#6B7280',
-          ))}`,
-          scaledSize: new google.maps.Size(40, 40),
-          anchor: new google.maps.Point(20, 40),
-        },
+        content: createMarkerElement(
+          loc.isBase ? 'BASE' : (index + 1).toString(),
+          loc.isBase ? '#059669' : '#6B7280',
+        ),
       });
       bounds.extend({ lat: loc.lat, lng: loc.lng });
       newMarkers.push(marker);
@@ -175,52 +164,45 @@ export const RouteMap: React.FC<RouteMapProps> = ({
     if (!bounds.isEmpty()) mapInst.fitBounds(bounds);
   }, [locations, clearPolyline, clearMarkers]);
 
-  // Mostrar ruta optimizada
-  const showOptimizedRoute = useCallback(async () => {
+  /**
+   * Dibuja el path cacheado sobre el mapa sin realizar llamadas de red.
+   * Si activePath está vacío, muestra solo los marcadores de ubicación.
+   */
+  const drawActivePath = useCallback(() => {
     const mapInst = mapInstanceRef.current;
     if (!mapInst || !activeRoute) return;
 
-    setIsLoading(true);
     setError(null);
     clearPolyline();
     clearMarkers();
 
-    try {
-      const orderedLocations = activeRoute.order
-        .map(id => locations.find(loc => loc.id === id))
-        .filter(Boolean) as Location[];
+    const orderedLocations = activeRoute.order
+      .map(id => locations.find(loc => loc.id === id))
+      .filter(Boolean) as Location[];
 
-      if (orderedLocations.length < 2) return;
+    if (orderedLocations.length < 2) return;
 
-      const result = await GoogleMapsService.getRouteFromOrderedLocations(orderedLocations);
-
-      if (!result?.path || result.path.length === 0) {
-        setError('No se pudo trazar la ruta. Verifica que Routes API esté habilitada en GCP.');
-        showMarkersOnly();
-        return;
-      }
-
-      const polyline = new google.maps.Polyline({
-        path: result.path,
-        strokeColor: routeColor,
-        strokeWeight: 4,
-        strokeOpacity: 0.85,
-        map: mapInst,
-      });
-      polylineRef.current = polyline;
-      const bounds = new google.maps.LatLngBounds();
-      result.path.forEach(pt => bounds.extend(pt));
-      mapInst.fitBounds(bounds);
-
-      placeMarkers(orderedLocations, routeColor, mapInst);
-
-    } catch (err) {
-      console.error('[RouteMap] showOptimizedRoute error:', err);
-      setError('Error al trazar la ruta.');
-    } finally {
-      setIsLoading(false);
+    if (!activePath || activePath.length === 0) {
+      setError('No hay ruta trazada para este algoritmo.');
+      showMarkersOnly();
+      return;
     }
-  }, [activeRoute, locations, routeColor, clearPolyline, clearMarkers, placeMarkers, showMarkersOnly]);
+
+    const polyline = new google.maps.Polyline({
+      path: activePath,
+      strokeColor: routeColor,
+      strokeWeight: 4,
+      strokeOpacity: 0.85,
+      map: mapInst,
+    });
+    polylineRef.current = polyline;
+
+    const bounds = new google.maps.LatLngBounds();
+    activePath.forEach(pt => bounds.extend(pt));
+    mapInst.fitBounds(bounds);
+
+    placeMarkers(orderedLocations, routeColor, mapInst);
+  }, [activeRoute, activePath, locations, routeColor, clearPolyline, clearMarkers, placeMarkers, showMarkersOnly]);
 
   useEffect(() => {
     if (!isMapReady) return;
@@ -236,31 +218,22 @@ export const RouteMap: React.FC<RouteMapProps> = ({
       return;
     }
 
-    showOptimizedRoute();
-  }, [isMapReady, locations, activeRoute, viewMode, showMarkersOnly, showOptimizedRoute, clearPolyline, clearMarkers]);
+    drawActivePath();
+  }, [isMapReady, locations, activeRoute, activePath, drawActivePath, showMarkersOnly, clearPolyline, clearMarkers]);
 
-  // Render
   return (
     <div className="bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200">
-      {/* Barra de título */}
       <div className="p-4 bg-gray-50 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Map className={`w-5 h-5 ${viewMode === 'greedy' ? 'text-red-600' : 'text-blue-600'}`} />
+            <Map className={`w-5 h-5 ${viewMode === 'google' ? 'text-emerald-600' : viewMode === 'greedy' ? 'text-red-600' : 'text-blue-600'}`} />
             <h3 className="font-semibold text-gray-800">
               Trazado en Mapa: {activeRoute ? routeName : 'Esperando ubicaciones...'}
             </h3>
           </div>
-          {isLoading && (
-            <div className={`flex items-center gap-2 text-sm ${viewMode === 'greedy' ? 'text-red-600' : 'text-blue-600'}`}>
-              <div className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${viewMode === 'greedy' ? 'border-red-600' : 'border-blue-600'}`} />
-              Dibujando ruta...
-            </div>
-          )}
         </div>
       </div>
 
-      {/* API Key no configurada */}
       {!isApiKeyConfigured && (
         <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-200 m-4 rounded-lg">
           <div className="flex items-start gap-4">
@@ -275,7 +248,6 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div className="p-4 bg-red-50 border-b border-red-200">
           <div className="flex items-start gap-2 text-red-700">
@@ -285,7 +257,6 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         </div>
       )}
 
-      {/* Contenedor del mapa */}
       {isApiKeyConfigured && (
         <div className="relative">
           <div ref={mapRef} className="h-96 w-full" style={{ minHeight: '400px' }} />
@@ -300,7 +271,6 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         </div>
       )}
 
-      {/* Métricas de la ruta activa */}
       {activeRoute && isApiKeyConfigured && (
         <div className="p-4 bg-gray-50 border-t border-gray-200">
           <div className="grid grid-cols-3 gap-4 text-center">
@@ -323,7 +293,6 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         </div>
       )}
 
-      {/* Secuencia de entrega */}
       {activeRoute && activeRoute.order.length > 0 && isApiKeyConfigured && (
         <div className="p-4 border-t border-gray-200">
           <h4 className="font-medium text-gray-800 mb-3">Secuencia de Entrega ({routeName}):</h4>
