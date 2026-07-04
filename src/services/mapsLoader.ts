@@ -5,7 +5,7 @@ const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const loader = new Loader({
   apiKey: API_KEY,
   version: 'weekly',
-  libraries: ['places', 'geometry', 'routes'],
+  libraries: ['places', 'geometry', 'routes', 'marker'],
 });
 
 export const mapsReady: Promise<any> = loader.load();

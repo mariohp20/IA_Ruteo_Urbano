@@ -48,11 +48,6 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         streetViewControl: false,
         fullscreenControl: true,
         zoomControl: true,
-        styles: [{
-          featureType: 'poi',
-          elementType: 'labels',
-          stylers: [{ visibility: 'off' }],
-        }],
       });
 
       mapInstanceRef.current = mapInstance;
