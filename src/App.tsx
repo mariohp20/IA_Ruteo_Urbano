@@ -1,11 +1,13 @@
-// Orquestador principal. Flujo: Ubicaciones → Matriz de tráfico → Motores IA → Trazado de rutas.
+// Orquestador principal. Flujo: Ubicaciones → Matriz de tráfico → Motores IA (Web Worker) → Trazado de rutas.
 // Los paths (polylines) se cachean aquí para que RouteMap sea estrictamente presentacional.
+// El cómputo pesado de A*/Greedy se delega a un Web Worker para no bloquear el hilo de UI.
 
 import { Box, BrainCircuit, Clock, MapPin, TrendingUp } from 'lucide-react';
 import { useCallback, useState } from 'react';
-import { PathfindingEngine, SearchResult, AlgorithmTrace, computeGapPercent } from './ai/tspAlgorithms';
+import { SearchResult, AlgorithmTrace } from './ai/tspAlgorithms';
 import { extractCoordinates } from './ai/matrixAdapter';
 import { HeuristicType } from './ai/heuristics';
+import type { WorkerInput, WorkerOutput, TraceData } from './ai/tsp.worker';
 import { DistanceMatrix } from './components/DistanceMatrix';
 import { LocationForm } from './components/LocationForm';
 import { OptimizationResults } from './components/OptimizationResults';
@@ -13,6 +15,52 @@ import { RouteMap } from './components/RouteMap';
 import { GoogleMapsService } from './services/googleMapsService';
 import { fetchAutomobileMatrix } from './services/routesApiService';
 import { Location, OptimizedRoute } from './types/route';
+
+// ---------------------------------------------------------------------------
+// Helper: reconstituye un AlgorithmTrace completo (con métodos) desde los datos
+// planos devueltos por el Web Worker (que solo puede transmitir objetos serializables).
+// ---------------------------------------------------------------------------
+function traceDataToAlgorithmTrace(td: TraceData): AlgorithmTrace {
+  return {
+    algorithm: td.algorithm,
+    heuristicType: td.heuristicType,
+    nodeCount: td.nodeCount,
+    timestamp: td.timestamp,
+    executionTimeMs: td.executionTimeMs,
+    expandedNodes: td.expandedNodes,
+    peakStatesInMemory: td.peakStatesInMemory,
+    totalCostSeconds: td.totalCostSeconds,
+    totalCostMinutes: td.totalCostMinutes,
+    gapVsOptimalPercent: td.gapVsOptimalPercent,
+    expansionLog: td.expansionLog,
+    toJSON() {
+      return {
+        metadata: {
+          algorithm: this.algorithm,
+          heuristicType: this.heuristicType ?? null,
+          nodeCount: this.nodeCount,
+          timestamp: this.timestamp,
+        },
+        metrics: {
+          executionTimeMs: this.executionTimeMs,
+          expandedNodes: this.expandedNodes,
+          peakStatesInMemory: this.peakStatesInMemory,
+          totalCostSeconds: this.totalCostSeconds,
+          totalCostMinutes: this.totalCostMinutes,
+          gapVsOptimalPercent: this.gapVsOptimalPercent,
+        },
+        expansionLog: this.expansionLog,
+      };
+    },
+    exportExpansionLogToCSV() {
+      const header = 'step,nodeExpanded,gCost,hCost,fCost';
+      const rows = this.expansionLog.map(
+        (e) => `${e.step},${e.nodeExpanded},${e.gCost.toFixed(4)},${e.hCost.toFixed(4)},${e.fCost.toFixed(4)}`
+      );
+      return [header, ...rows].join('\n');
+    },
+  };
+}
 
 export type ViewMode = 'greedy' | 'astar' | 'google';
 
@@ -89,7 +137,7 @@ function App() {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Orquestador principal
+  // Orquestador principal — usa Web Worker para no bloquear la UI
   // ---------------------------------------------------------------------------
 
   const handleOptimizeRoute = useCallback(async () => {
@@ -123,29 +171,64 @@ function App() {
       }
       setRawTimeMatrix(timeMatrix);
 
-      // 2. Ejecutar motores IA (operaciones puras en memoria, sin red).
+      // 2. Delegar el cómputo pesado de IA al Web Worker (hilo aislado).
+      //    El hilo de UI quedará completamente libre durante el procesamiento.
       const nodes = extractCoordinates(locations);
-      const engine = new PathfindingEngine(timeMatrix, nodes);
 
-      const { result: greedyRes, trace: greedyTrace } = engine.runGreedy(baseIndex);
-      const { result: astarHavRes, trace: astarHavTrace } = engine.runAStar(baseIndex, 'haversine');
-      const { result: astarEucRes, trace: astarEucTrace } = engine.runAStar(baseIndex, 'euclidean');
-      const { result: astarManRes, trace: astarManTrace } = engine.runAStar(baseIndex, 'manhattan');
+      const workerResult = await new Promise<WorkerOutput>((resolve, reject) => {
+        const worker = new Worker(
+          new URL('./ai/tsp.worker.ts', import.meta.url),
+          { type: 'module' }
+        );
 
-      // A*(Haversine) como referencia óptima canónica (heurística más precisa geográficamente).
-      const optimalCost = astarHavRes.totalCost;
+        const input: WorkerInput = { timeMatrix, nodes, baseIndex };
+        worker.postMessage(input);
 
+        worker.onmessage = (e: MessageEvent<WorkerOutput>) => {
+          worker.terminate();
+          resolve(e.data);
+        };
+
+        worker.onerror = (err) => {
+          worker.terminate();
+          reject(new Error(err.message || 'Error crítico en el hilo secundario.'));
+        };
+      });
+
+      if (!workerResult.success) {
+        throw new Error(workerResult.error);
+      }
+
+      const { greedy, astarHaversine, astarEuclidean, astarManhattan } = workerResult.payload;
+
+      // 3. Reconstituir AlgorithmTrace con sus métodos (los workers solo envían datos planos).
       const metrics: ExperimentMetrics = {
-        greedy: { result: greedyRes, trace: greedyTrace, gapPercent: computeGapPercent(greedyRes.totalCost, optimalCost) },
-        astarHaversine: { result: astarHavRes, trace: astarHavTrace, gapPercent: null },
-        astarEuclidean: { result: astarEucRes, trace: astarEucTrace, gapPercent: computeGapPercent(astarEucRes.totalCost, optimalCost) },
-        astarManhattan: { result: astarManRes, trace: astarManTrace, gapPercent: computeGapPercent(astarManRes.totalCost, optimalCost) },
+        greedy: {
+          result: greedy.result,
+          trace: traceDataToAlgorithmTrace(greedy.traceData),
+          gapPercent: greedy.traceData.gapVsOptimalPercent,
+        },
+        astarHaversine: {
+          result: astarHaversine.result,
+          trace: traceDataToAlgorithmTrace(astarHaversine.traceData),
+          gapPercent: null,
+        },
+        astarEuclidean: {
+          result: astarEuclidean.result,
+          trace: traceDataToAlgorithmTrace(astarEuclidean.traceData),
+          gapPercent: astarEuclidean.traceData.gapVsOptimalPercent,
+        },
+        astarManhattan: {
+          result: astarManhattan.result,
+          trace: traceDataToAlgorithmTrace(astarManhattan.traceData),
+          gapPercent: astarManhattan.traceData.gapVsOptimalPercent,
+        },
       };
       setExperimentMetrics(metrics);
 
-      // 3. Trazar rutas en el mapa (SDK de Maps JS).
-      const greedyLocs = greedyRes.path.map(idx => locations[idx]);
-      const astarLocs = astarHavRes.path.map(idx => locations[idx]);
+      // 4. Trazar rutas en el mapa (SDK de Maps JS, en el hilo principal).
+      const greedyLocs = greedy.result.path.map(idx => locations[idx]);
+      const astarLocs = astarHaversine.result.path.map(idx => locations[idx]);
 
       const [gRoute, aRoute, nativeGoogleRoute] = await Promise.all([
         GoogleMapsService.getRouteFromOrderedLocations(greedyLocs),
@@ -160,10 +243,10 @@ function App() {
       });
 
       if (gRoute) {
-        setGreedyRoute({ order: gRoute.orderedIds, totalDistance: gRoute.totalDistance, totalTime: greedyRes.totalCost / 60, totalCost: 0 });
+        setGreedyRoute({ order: gRoute.orderedIds, totalDistance: gRoute.totalDistance, totalTime: greedy.result.totalCost / 60, totalCost: 0 });
       }
       if (aRoute) {
-        setAstarRoute({ order: aRoute.orderedIds, totalDistance: aRoute.totalDistance, totalTime: astarHavRes.totalCost / 60, totalCost: 0 });
+        setAstarRoute({ order: aRoute.orderedIds, totalDistance: aRoute.totalDistance, totalTime: astarHaversine.result.totalCost / 60, totalCost: 0 });
       }
       if (nativeGoogleRoute) {
         setGoogleRoute({ order: nativeGoogleRoute.order, totalDistance: nativeGoogleRoute.totalDistance, totalTime: nativeGoogleRoute.totalTime, totalCost: 0 });
