@@ -121,7 +121,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
             <p style="margin:2px 0 0;font-size:11px;color:#888">Paso ${index + 1} de ${orderedLocations.length}</p>
           </div>`,
       });
-      marker.addListener('click', () => infoWindow.open(mapInst, marker));
+      marker.addListener('gmp-click', () => infoWindow.open(mapInst, marker));
       newMarkers.push(marker);
     });
 

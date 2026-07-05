@@ -120,15 +120,74 @@ function buildTrace(
 }
 
 // ---------------------------------------------------------------------------
-// Estado interno de A*
+// MinHeap (priority queue) — O(log k) push/pop vs O(k log k) array.sort
 // ---------------------------------------------------------------------------
 
-/** Nodo del árbol de búsqueda de A* (inmutable por diseño). */
+class MinHeap<T> {
+    private readonly data: T[] = [];
+    private readonly compareFn: (a: T, b: T) => number;
+
+    constructor(compareFn: (a: T, b: T) => number) {
+        this.compareFn = compareFn;
+    }
+
+    get size(): number { return this.data.length; }
+
+    push(item: T): void {
+        this.data.push(item);
+        this._bubbleUp(this.data.length - 1);
+    }
+
+    pop(): T | undefined {
+        if (this.data.length === 0) return undefined;
+        const top = this.data[0];
+        const last = this.data.pop()!;
+        if (this.data.length > 0) {
+            this.data[0] = last;
+            this._sinkDown(0);
+        }
+        return top;
+    }
+
+    private _bubbleUp(i: number): void {
+        while (i > 0) {
+            const parent = (i - 1) >> 1;
+            if (this.compareFn(this.data[i], this.data[parent]) < 0) {
+                [this.data[i], this.data[parent]] = [this.data[parent], this.data[i]];
+                i = parent;
+            } else break;
+        }
+    }
+
+    private _sinkDown(i: number): void {
+        const n = this.data.length;
+        while (true) {
+            let smallest = i;
+            const l = 2 * i + 1, r = 2 * i + 2;
+            if (l < n && this.compareFn(this.data[l], this.data[smallest]) < 0) smallest = l;
+            if (r < n && this.compareFn(this.data[r], this.data[smallest]) < 0) smallest = r;
+            if (smallest === i) break;
+            [this.data[i], this.data[smallest]] = [this.data[smallest], this.data[i]];
+            i = smallest;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Estado interno de A* — usa parent pointer en vez de copiar el path completo
+// ---------------------------------------------------------------------------
+
+/**
+ * Nodo del árbol de búsqueda de A*.
+ * parentIdx apunta al índice en la tabla `nodes` del nodo predecesor.
+ * El camino completo se reconstruye hacia atrás solo cuando se halla la solución.
+ */
 interface AStarNode {
     readonly currentNode: number;
     /** Bitmask de nodos visitados. Bit i activo = nodo i ya visitado. */
     readonly visitedMask: number;
-    readonly path: readonly number[];
+    /** Índice en el array `closed` del nodo padre. -1 para el nodo raíz. */
+    readonly parentIdx: number;
     readonly g: number;
     readonly h: number;
     readonly f: number;
@@ -302,11 +361,13 @@ export class PathfindingEngine {
      * - Óptimo: SÍ, dado que la heurística es admisible.
      * - Complejidad temporal: O(n² · 2ⁿ) | espacial: O(n · 2ⁿ).
      *
-     * Optimizaciones:
+     * Optimizaciones implementadas:
+     * - MinHeap: extrae el estado de menor f(n) en O(log k) vs O(k log k) del sort.
+     * - Parent pointers: no copia el array de path en cada estado; lo reconstruye
+     *   una sola vez al hallar la solución óptima.
      * - Bitmask para representación de estados visitados (O(1) por operación).
      * - Poda bestG: descarta estados ya alcanzados con menor costo.
-     * - Poda por cota superior dinámica: descarta estados cuyo f(n) supera
-     *   el mejor tour completo conocido hasta el momento.
+     * - Poda por cota superior dinámica (upperBound): descarta ramas subóptimas.
      */
     public runAStar(
         startIndex: number,
@@ -322,17 +383,28 @@ export class PathfindingEngine {
         const bestG = new Map<string, number>();
 
         let upperBound = Infinity;
-        let bestFinalNode: AStarNode | null = null;
+
+        /**
+         * Tabla de nodos cerrados (expandidos).
+         * Cada entrada guarda el nodo actual y su índice de padre en esta misma tabla.
+         * Permite reconstruir el camino completo en O(n) sin haber copiado arrays.
+         */
+        const closed: Array<{ node: number; parentIdx: number }> = [];
+
+        /** Índice en `closed` del nodo del mejor tour completo hallado. */
+        let bestFinalClosedIdx = -1;
+        let bestFinalCost = Infinity;
 
         const initialMask = setBit(0, startIndex);
-        const openList: AStarNode[] = [{
+        const heap = new MinHeap<AStarNode>((a, b) => a.f - b.f);
+        heap.push({
             currentNode: startIndex,
             visitedMask: initialMask,
-            path: Object.freeze([startIndex]),
+            parentIdx: -1,
             g: 0,
             h: 0,
             f: 0,
-        }];
+        });
 
         bestG.set(stateKey(startIndex, initialMask), 0);
 
@@ -340,19 +412,22 @@ export class PathfindingEngine {
         let peakStatesInMemory = 1;
         let step = 0;
 
-        while (openList.length > 0) {
-            // Para n ≤ 15, el sort lineal es aceptable.
-            // Para n > 20 se recomienda una priority queue (min-heap).
-            openList.sort((a, b) => a.f - b.f);
-            const current = openList.shift()!;
+        while (heap.size > 0) {
+            const current = heap.pop()!;
             expandedNodes++;
             step++;
 
+            // Descarta si f supera la mejor solución conocida.
             if (current.f >= upperBound) continue;
 
+            // Poda de dominancia: si ya expandimos este estado con menor g, ignorar.
             const key = stateKey(current.currentNode, current.visitedMask);
             const recorded = bestG.get(key);
             if (recorded !== undefined && current.g > recorded) continue;
+
+            // Registrar en closed para reconstrucción del camino.
+            const closedIdx = closed.length;
+            closed.push({ node: current.currentNode, parentIdx: current.parentIdx });
 
             expansionLog.push({
                 step,
@@ -362,23 +437,20 @@ export class PathfindingEngine {
                 fCost: current.f,
             });
 
+            // Estado terminal: todos los nodos visitados → cerrar el tour.
             if (current.visitedMask === this.fullMask) {
                 const returnCost = this.timeMatrix[current.currentNode][startIndex];
                 const totalG = current.g + returnCost;
 
                 if (totalG < upperBound) {
                     upperBound = totalG;
-                    bestFinalNode = {
-                        ...current,
-                        path: Object.freeze([...current.path, startIndex]),
-                        g: totalG,
-                        h: 0,
-                        f: totalG,
-                    };
+                    bestFinalClosedIdx = closedIdx;
+                    bestFinalCost = totalG;
                 }
                 continue;
             }
 
+            // Expandir vecinos no visitados.
             for (let j = 0; j < this.n; j++) {
                 if (hasBit(current.visitedMask, j)) continue;
 
@@ -397,21 +469,21 @@ export class PathfindingEngine {
 
                 bestG.set(neighborKey, newG);
 
-                openList.push({
+                heap.push({
                     currentNode: j,
                     visitedMask: newMask,
-                    path: Object.freeze([...current.path, j]),
+                    parentIdx: closedIdx,
                     g: newG,
                     h: newH,
                     f: newF,
                 });
 
-                peakStatesInMemory = Math.max(peakStatesInMemory, openList.length);
+                peakStatesInMemory = Math.max(peakStatesInMemory, heap.size);
             }
         }
 
         // Sin solución (grafo desconectado): retornar resultado vacío.
-        if (!bestFinalNode) {
+        if (bestFinalClosedIdx === -1) {
             const executionTimeMs = performance.now() - t0;
             const emptyResult: SearchResult = { path: [], totalCost: 0, expandedNodes, executionTimeMs, heuristicType, peakStatesInMemory };
             const emptyTrace = buildTrace({
@@ -430,11 +502,20 @@ export class PathfindingEngine {
             return { result: emptyResult, trace: emptyTrace };
         }
 
+        // Reconstruir el camino óptimo recorriendo la tabla closed hacia atrás.
+        const reversePath: number[] = [startIndex];
+        let idx = bestFinalClosedIdx;
+        while (idx !== -1) {
+            reversePath.push(closed[idx].node);
+            idx = closed[idx].parentIdx;
+        }
+        const path = reversePath.reverse();
+
         const executionTimeMs = performance.now() - t0;
-        const totalCost = bestFinalNode.g;
+        const totalCost = bestFinalCost;
 
         const result: SearchResult = {
-            path: [...bestFinalNode.path],
+            path,
             totalCost,
             expandedNodes,
             executionTimeMs,

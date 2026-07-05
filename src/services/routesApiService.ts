@@ -16,7 +16,7 @@ export async function fetchAutomobileMatrix(locations: Location[]) {
         origins: waypoints,
         destinations: waypoints,
         travelMode: "DRIVE",
-        routingPreference: "TRAFFIC_AWARE_OPTIMAL"
+        routingPreference: "TRAFFIC_AWARE"
     };
 
     try {
