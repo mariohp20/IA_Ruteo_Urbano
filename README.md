@@ -2,6 +2,8 @@
 
 Comparativa experimental de **Búsqueda Voraz (Greedy)**, **A\*** (con tres heurísticas geométricas) y **optimización comercial (Google Routes API)** aplicados al Problema del Viajante (TSP) sobre datos de tráfico real en Lima Metropolitana, Perú.
 
+**Demo en vivo:** [https://optimizacion-ruteo-lima-ia.vercel.app](https://optimizacion-ruteo-lima-ia.vercel.app)
+
 Este repositorio es el soporte técnico del artículo científico *"Análisis Experimental de Algoritmos de Búsqueda Informada para el Problema de Ruteo Urbano: A\*, Búsqueda Voraz y Optimización Comercial con Datos de Tráfico Real en Lima Metropolitana"*, desarrollado como proyecto de fin de curso en Inteligencia Artificial.
 
 <!-- IMG: Captura general de la interfaz principal con una ruta optimizada trazada sobre el mapa de Lima -->
@@ -10,6 +12,7 @@ Este repositorio es el soporte técnico del artículo científico *"Análisis Ex
 
 ## Tabla de contenidos
 
+- [Acceso rápido](#acceso-rápido)
 - [Descripción general](#descripción-general)
 - [Motivación](#motivación)
 - [Algoritmos implementados](#algoritmos-implementados)
@@ -27,6 +30,16 @@ Este repositorio es el soporte técnico del artículo científico *"Análisis Ex
 - [Autores](#autores)
 - [Referencias](#referencias)
 - [Licencia](#licencia)
+
+---
+
+## Acceso rápido
+
+La aplicación está desplegada y disponible sin instalación en:
+
+**[https://optimizacion-ruteo-lima-ia.vercel.app](https://optimizacion-ruteo-lima-ia.vercel.app)**
+
+> La aplicación en producción utiliza una API Key configurada para el dominio de despliegue. Para ejecutar el proyecto localmente con una API Key propia, seguir los pasos de la sección [Instalación y ejecución local](#instalación-y-ejecución-local).
 
 ---
 
@@ -65,9 +78,11 @@ En cada paso, selecciona el nodo no visitado de menor costo inmediato `g(n)`. Co
 Expande estados según `f(n) = g(n) + h(n)`, donde `g(n)` es el costo real acumulado (segundos de tráfico real) y `h(n)` es una estimación heurística admisible del costo restante. La implementación incluye:
 
 - **Representación de estados mediante bitmask**: el conjunto de nodos visitados se codifica como un entero de 32 bits, permitiendo operaciones de membresía en tiempo `O(1)`.
-- **Poda por mejor costo conocido (`bestG`)**: se descarta cualquier expansión de un estado `(nodo, visitados)` cuyo costo acumulado supere el mejor ya registrado para ese mismo estado.
-- **Poda por cota superior dinámica**: una vez encontrado un tour completo, se descartan todos los estados cuyo `f(n)` ya superen ese costo.
-- **Heurística informada**: `h(n)` combina la arista mínima estimada hacia cualquier nodo no visitado más la arista mínima de cierre hacia la base, preservando la admisibilidad.
+- **Cola de prioridad mínima (MinHeap)**: la lista abierta se implementa como un árbol binario, reduciendo la extracción del estado óptimo de `O(k log k)` a `O(log k)` por iteración.
+- **Punteros al nodo padre (parent pointers)**: el camino parcial se reconstruye al final desde una tabla de nodos cerrados, eliminando la copia de arrays en cada expansión.
+- **Poda por mejor costo conocido (`bestG`)**: se descarta cualquier expansión de un estado `(nodo, visitados)` cuyo costo acumulado supere el mejor ya registrado.
+- **Poda por cota superior dinámica**: una vez encontrado un tour completo, se descartan todos los estados cuyo `f(n)` supere ese costo.
+- **Ejecución en Web Worker**: el motor algorítmico corre en un hilo secundario del navegador, manteniendo la interfaz responsiva durante el cómputo intensivo.
 
 Complejidad temporal `O(n² · 2ⁿ)`, complejidad espacial `O(n · 2ⁿ)` en el peor caso.
 
@@ -94,8 +109,8 @@ Usuario define nodos (UI)
 Google Routes API v2 ── matriz de tiempos reales NxN (única llamada de red por ejecución)
         │
         ▼
-PathfindingEngine ── ejecuta Greedy + A*(Haversine) + A*(Euclidiana) + A*(Manhattan)
-        │                    (operaciones en memoria, sin red adicional)
+Web Worker (hilo secundario) ── ejecuta Greedy + A*(Haversine) + A*(Euclidiana) + A*(Manhattan)
+        │                             (operaciones en memoria, UI nunca se congela)
         ▼
 Google Maps SDK ── trazado de polylines + benchmark nativo de Google (paralelo, una sola vez)
         │
@@ -105,7 +120,7 @@ UI comparativa ── tabla de métricas + mapa + exportación JSON
 
 El estado de las rutas (polylines) se cachea en el componente raíz, de forma que cambiar entre pestañas de algoritmo o entre heurísticas de A\* no genera llamadas de red adicionales. Toda ejecución de optimización dispara exactamente una llamada a la Routes API y una llamada paralela al SDK de Maps JS, independientemente de cuántos algoritmos o heurísticas se comparen.
 
-<!-- IMG: Diagrama de arquitectura de componentes (puede generarse con la herramienta de diagramación del repositorio) -->
+<!-- IMG: Diagrama de arquitectura de componentes -->
 
 ---
 
@@ -120,6 +135,7 @@ El estado de las rutas (polylines) se cachea en el componente raíz, de forma qu
 | Mapas y geocodificación | Google Maps JavaScript SDK, Places API (New) |
 | Matriz de tiempos de tráfico | Google Routes API v2 (`computeRouteMatrix`) |
 | Motor de búsqueda | Implementación propia en TypeScript puro, sin dependencias externas |
+| Concurrencia | Web Workers API — hilo secundario para cómputo intensivo |
 
 ---
 
@@ -130,7 +146,8 @@ src/
 ├── ai/
 │   ├── heuristics.ts          Funciones heurísticas admisibles (Haversine, Euclidiana, Manhattan)
 │   ├── matrixAdapter.ts       Adaptadores de formato entre la UI y el motor de búsqueda
-│   └── tspAlgorithms.ts       Motor de búsqueda: PathfindingEngine (Greedy + A*)
+│   ├── tspAlgorithms.ts       Motor de búsqueda: PathfindingEngine (Greedy + A* con MinHeap)
+│   └── tsp.worker.ts          Web Worker: ejecuta los algoritmos en hilo secundario
 ├── components/
 │   ├── DistanceMatrix.tsx     Visualización de la matriz NxN de costos reales
 │   ├── LocationForm.tsx       Gestión de nodos y autocompletado de direcciones
@@ -143,6 +160,8 @@ src/
 ├── types/
 │   └── route.ts               Definiciones de tipos compartidas
 └── App.tsx                    Orquestador principal
+docs/
+└── notas-experimentos-v1.md   Notas y experimentos de la primera versión del proyecto
 ```
 
 ---
@@ -192,12 +211,13 @@ El consumo de la Routes API por ejecución completa equivale a `N²` elementos d
 
 ## Uso de la aplicación
 
-1. Buscar y agregar una dirección como **Base de Operaciones**.
-2. Agregar entre 1 y 15 puntos de entrega adicionales mediante el buscador de direcciones.
-3. Presionar **Buscar Mejor Ruta** — esta acción dispara la única llamada de red de costo por ejecución.
-4. Navegar entre las pestañas **Greedy**, **A\*** y **Caja Negra (Google)** para comparar resultados.
-5. Dentro de la pestaña A\*, alternar entre las heurísticas Haversine, Euclidiana y Manhattan sin generar tráfico de red adicional.
-6. Descargar el experimento completo en formato JSON desde el botón de exportación al pie de la tabla comparativa.
+1. Acceder a la demo en [https://optimizacion-ruteo-lima-ia.vercel.app](https://optimizacion-ruteo-lima-ia.vercel.app) o ejecutar localmente.
+2. Buscar y agregar una dirección como **Base de Operaciones**.
+3. Agregar entre 1 y 15 puntos de entrega adicionales mediante el buscador de direcciones.
+4. Presionar **Buscar Mejor Ruta** — esta acción dispara la única llamada de red de costo por ejecución.
+5. Navegar entre las pestañas **Greedy**, **A\*** y **Caja Negra (Google)** para comparar resultados.
+6. Dentro de la pestaña A\*, alternar entre las heurísticas Haversine, Euclidiana y Manhattan sin generar tráfico de red adicional.
+7. Descargar el experimento completo en formato JSON desde el botón de exportación al pie de la tabla comparativa.
 
 <!-- IMG: Captura de la secuencia de entrega y matriz de costos reales -->
 
@@ -210,8 +230,8 @@ El consumo de la Routes API por ejecución completa equivale a `N²` elementos d
 | Costo de ruta | Tiempo total de viaje en minutos, calculado sobre tráfico real |
 | Gap% | Diferencia porcentual respecto a la solución óptima de referencia (A\* Haversine) |
 | Nodos expandidos | Número de estados procesados por el árbol de búsqueda |
-| Tiempo de CPU | Tiempo de ejecución del algoritmo, medido con `performance.now()` |
-| Memoria pico | Número máximo de estados simultáneos mantenidos en memoria |
+| Tiempo de CPU | Tiempo de ejecución del algoritmo, medido con `performance.now()` en el Web Worker |
+| Memoria pico | Número máximo de estados simultáneos en la cola de prioridad durante la búsqueda |
 | Admisibilidad | Verificación formal de que `h(n) ≤ costo_real(n)` para todo par de nodos |
 
 ---
@@ -254,6 +274,8 @@ df.plot(x='step', y='fCost')
 
 Dado que la Routes API incorpora condiciones de tráfico en tiempo real, los costos absolutos de una ejecución varían según la hora y fecha de captura. El archivo JSON exportado incluye la matriz de tiempos exacta utilizada en cada experimento, junto con su marca temporal, permitiendo que cualquier análisis posterior referencie las condiciones precisas bajo las cuales se obtuvieron los resultados reportados en el artículo asociado a este repositorio.
 
+El experimento documentado en el artículo científico fue capturado el **viernes 4 de julio de 2026 a las 13:57 h (PET, UTC-5)**, bajo el perfil `TRAFFIC_AWARE` de la Routes API v2, en condiciones de tráfico de día hábil en horario laboral activo.
+
 ---
 
 ## Limitaciones conocidas
@@ -274,14 +296,14 @@ Dado que la Routes API incorpora condiciones de tráfico en tiempo real, los cos
 
 ## Autores
 
-Proyecto desarrollado para el curso de Inteligencia Artificial.
+Proyecto desarrollado para el curso de Inteligencia Artificial — Universidad Peruana de Ciencias Aplicadas.
 
-| Integrante | Rol |
+| Integrante |
 |---|---|
-| Chavez Chacon, Alex | Integrante del grupo |
-| Huarcaya Pariona, Mario | Integrante del grupo |
-| Llamocca Milla, Piero | Integrante del grupo |
-| Quispe Arango, Paolo | Integrante del grupo |
+| Chavez Chacon, Alex |
+| Huarcaya Pariona, Mario |
+| Llamocca Milla, Piero |
+| Quispe Arango, Paolo |
 
 **Colaboración adicional:** Pachas, Pieers — contribuyó al desarrollo de la primera versión de la aplicación web sobre la cual se construyó este proyecto.
 
